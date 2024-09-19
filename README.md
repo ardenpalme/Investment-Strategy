@@ -9,14 +9,16 @@ Spot positions are entered if the strategy signals long AND market valuation is 
 If the strategy signals short, cash or stablecoins are held.  
 
 <p align="center">
-<img src="images/strategy1.png" alt="TradingView Strategy" width="600"/>
+  <img src="images/strategy1.png" alt="TradingView Strategy" width="600"/>
 </p>
 
 ## Market Valuation
 Determines whether the market environment is supportive of price performance.  
-This system aggregates several key on-chain metrics and fundamental indicators that are considered to have a predictive value for Bitcoin's price movements.  
+This system aggregates several key on-chain metrics, fundamental indicators, and sentiment indicators that are considered to have a predictive value for Bitcoin's price movements.  
 This aggregate score is mean-reverting and signals overbought and oversold conditions.
+The Sentiment indicator queries CoinAPI for market data and GoogleTrends for the amount of google searches for a set of cryptocurrency terms. The search frequency of cryptocurrency terms can be indicative of retail sentiment. Below is a screenshot of an early version of this indicator.
 
 <p align="center">
-<img src="images/on_chain1.png" alt="Market Valuation Score" width="600"/>
+  <img src="images/on_chain1.png" alt="Market Valuation Score" width="400"/>
+  <img src="images/sentiment1.png" alt="Market Valuation Score" width="400"/>
 </p>
