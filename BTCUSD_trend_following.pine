@@ -1,0 +1,180 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © Palme  
+
+//@version=5
+strategy("ArdenPalme's Strategy", initial_capital=10000, slippage=1, default_qty_value=100, pyramiding=0, default_qty_type=strategy.percent_of_equity, process_orders_on_close=true, shorttitle="PS", overlay=true)
+
+import Bikelife76/MajorCobraMetrics/30 as cobra
+
+disp_ind = input.string ("Strategy", title = "Display Curve" , tooltip = "Choose which data you would like to display", options=["Strategy", "Equity", "Open Profit", "Gross Profit", "Net Profit", "None"], group = " Config Metrics ")
+pos_table = input.string("Bottom Right", "Table Position", options = ["Top Left", "Middle Left", "Bottom Left", "Top Right", "Middle Right", "Bottom Right", "Top Center", "Bottom Center"], group = " Config Metrics ")
+type_table = input.string("Full", "Table Type", options = ["Full", "Simple", "None"], group = " Config Metrics ")
+
+//DATE RANGE
+useDateFilter = input.bool(true, title="Range of Backtest", group="Backtest")
+backtestStartDate = input.time(timestamp("1 Jan 2018"), title="Start Date", group="Backtest Time Period")
+inDateRange = not useDateFilter or (time >= backtestStartDate)
+int ms_per_day = 86400000
+
+// ===== INDICATORS - BEGIN =======
+
+// Indicator: Bollinger-Band Percentile + std. deviation (BBPct)
+// Source: https://www.tradingview.com/script/yxr6jElc-Bollinger-Bands-Percentile-Stdev-Channels-BBPct-AlgoAlpha/
+// Condition: ta.crossover(bbpct_pos, bbpct_thrsh) 
+length = input.int(20, title="BB Length", group="Squeeze Momentum")
+mult = input.float(2.0,title="BB MultFactor", group="Squeeze Momentum")
+lengthKC=input.int(20, title="KC Length", group="Squeeze Momentum")
+multKC = input.float(1.5, title="KC MultFactor", group="Squeeze Momentum")
+sq_deriv_smoothing=input.int(5, title="Smoothing", group="Squeeze Momentum")
+useTrueRange = input.bool(true, title="Use TrueRange (KC)", group="Squeeze Momentum")
+
+basis = ta.sma(close, length)
+dev = multKC * ta.stdev(close, length)
+upperBB = basis + dev
+lowerBB = basis - dev
+ma = ta.sma(close, lengthKC)
+r = useTrueRange ? ta.tr : (high - low)
+rangema = ta.sma(r, lengthKC)
+upperKC = ma + rangema * multKC
+lowerKC = ma - rangema * multKC
+
+sqzOn  = (lowerBB > lowerKC) and (upperBB < upperKC)
+sqzOff = (lowerBB < lowerKC) and (upperBB > upperKC)
+noSqz  = (sqzOn == false) and (sqzOff == false)
+
+sq_val = ta.linreg(close  -  math.avg(math.avg(ta.highest(high, lengthKC), ta.lowest(low, lengthKC)),ta.sma(close,lengthKC)), lengthKC,0)
+sq_val_deriv = ta.ema(sq_val - sq_val[1],sq_deriv_smoothing)
+
+bb_len = input.int(20, title="Length", minval=1, group='BB')
+bb_src = input(close, title="close", group='BB')
+bb_mult = input.float(2.0, minval=0.001, maxval=50, title="Multiplier", group='BB')
+bbpct_thrsh = input.int(68, title="Short Threshold")
+bbpct(len, src, mult) =>
+    lookback = (time - backtestStartDate) / ms_per_day
+
+    var stdevArray = array.new_float(lookback,0.0)
+
+    bb_basis = ta.rma(src, len)
+    bb_dev = mult * ta.stdev(src, len)
+    upper = bb_basis + bb_dev
+    lower = bb_basis - bb_dev
+    positionBetweenBands = 100 * (src - lower)/(upper - lower)
+
+    array.push(stdevArray, dev/close)
+    if array.size(stdevArray)>=lookback
+        array.remove(stdevArray, 0)
+
+    rank = array.percentrank(stdevArray, lookback-1)
+    hist = 100*dev/close
+
+    positionBetweenBands 
+
+
+bbpct_pos = bbpct(bb_len, bb_src, bb_mult)
+
+upper1 = close + 0.05 * close
+lower1 = close - 0.05 * close
+stdL = close > lower1
+stdS = close < upper1
+
+// Indicator: Range Action Verification Index RAVIFXF
+// Source: https://www.tradingview.com/script/jV9rqvC9-RAVI-FX-Fisher-Loxx/
+// Filter: fish >= ravi_trigger
+ravi_src = input.source(close, "Source", group = "RAVI")
+ravi_maf = input.int(4, "Fast MA", minval = 1, group = "RAVI")
+ravi_mas = input.int(49, "Slow MA", minval = 1, group = "RAVI")
+ravi_trigger = input.float(0.07, "Trigger", minval = 0, group = "RAVI")
+
+maval = (ta.wma(ravi_src, ravi_maf) - ta.wma(ravi_src, ravi_mas)) * ta.atr(ravi_maf) / ta.wma(ravi_src, ravi_mas) / ta.atr(ravi_mas)
+maval := 100 * maval
+fish = (math.exp(2 * maval) - 1) / (math.exp(2 * maval) + 1)
+
+// Indicator: Moving Average Convergence-Divergence (MACD - EMA)
+// Source: N/A (built-in)
+// Condition: ta.crossover(macd_fast, macd_slow)
+macd_src = input.source(close, "Source", group = "MACD")
+macd_fast_len = input.int(23, "Fast Length", group = "MACD")
+macd_slow_len = input.int(33, "Slow Length", group = "MACD")
+
+macd_fast = ta.ema(macd_src, macd_fast_len)
+macd_slow = ta.ema(macd_src, macd_slow_len)
+
+
+// Indicator: Kijun-Sen Base (KSB) and Tenkan-Sen
+// Source: https://www.tradingview.com/script/WDqThTPO-Kijun-Sen-Base/
+// Condition: ta.crossover(tenkanSen, kijun_base_line)
+tenkanLength = input.int(9, title="Tenkan Length", group="KSB")
+
+int kijun_sen_base_period = (26)
+nnamdert(len) =>
+    math.avg(ta.lowest(len), ta.highest(len))
+kijun_base_line = nnamdert(kijun_sen_base_period)
+
+highestHigh = ta.highest(high, tenkanLength)
+lowestLow = ta.lowest(low, tenkanLength)
+tenkanSen = (highestHigh + lowestLow) / 2
+
+// Indicator: Average Directional Index (ADX)
+// Source: https://www.tradingview.com/script/VTPMMOrx-ADX-and-DI/
+// Condition: ((ADX > adx_thrsh) and ta.crossover(DIPlus, DIMinus))
+adx_len = input.int(14, title = "Length", group="ADX")
+adx_thrsh = input.int(8, title="Threshold", group="ADX")
+
+TrueRange = math.max(math.max(high-low, math.abs(high-nz(close[1]))), math.abs(low-nz(close[1])))
+DirectionalMovementPlus = high-nz(high[1]) > nz(low[1])-low ? math.max(high-nz(high[1]), 0): 0
+DirectionalMovementMinus = nz(low[1])-low > high-nz(high[1]) ? math.max(nz(low[1])-low, 0): 0
+
+SmoothedTrueRange = 0.0
+SmoothedTrueRange := nz(SmoothedTrueRange[1]) - (nz(SmoothedTrueRange[1])/adx_len) + TrueRange
+
+SmoothedDirectionalMovementPlus = 0.0
+SmoothedDirectionalMovementPlus := nz(SmoothedDirectionalMovementPlus[1]) - (nz(SmoothedDirectionalMovementPlus[1])/adx_len) + DirectionalMovementPlus
+
+SmoothedDirectionalMovementMinus = 0.0
+SmoothedDirectionalMovementMinus := nz(SmoothedDirectionalMovementMinus[1]) - (nz(SmoothedDirectionalMovementMinus[1])/adx_len) + DirectionalMovementMinus
+
+DIPlus = SmoothedDirectionalMovementPlus / SmoothedTrueRange * 100
+DIMinus = SmoothedDirectionalMovementMinus / SmoothedTrueRange * 100
+DX = math.abs(DIPlus-DIMinus) / (DIPlus+DIMinus)*100
+ADX = ta.sma(DX, adx_len)
+
+// Aroon Up Down
+// Source: N/A (built-in)
+// Condition: ta.crossover(aroon_osc, aroon_thrsh) 
+aroon_len = input.int(40, title = "Length", group="Aroon")
+aroon_thrsh = input.int(10, title = "Threshold", group="Aroon")
+aroon(_len) =>
+    upper = 100 * (ta.highestbars(high, _len+1) + _len)/_len
+    lower = 100 * (ta.lowestbars(low, _len+1) + _len)/_len
+    (upper - lower)
+aroon_osc = aroon(aroon_len)
+
+// Indicator: GMA
+// Source: https://in.tradingview.com/script/RLuKzsNG-geometric-moving-average-gma/
+// Condition: ta.crossover(close, gma)
+n = input.int(9, title="Period", minval=1)
+product_val = 1.0
+for i = 0 to n - 1
+    product_val := product_val * close[i]
+gma = math.pow(product_val, 1 / n) // Извлекаем n-ю корень из произведения
+
+// ===== INDICATORS - END =======
+
+//PLOTS - for testing out new indicators before adding them
+uptrend_cond = ta.crossover(close,gma)
+downtrend_cond = ta.crossunder(close,gma)
+plotshape(uptrend_cond, style = shape.triangleup, color = color.green, location = location.belowbar, size = size.normal)
+plotshape(downtrend_cond, style = shape.triangledown, color = color.red, location = location.abovebar, size = size.normal)
+
+//TRADE CONDITIONS
+long_condition  = ta.crossover(bbpct_pos, bbpct_thrsh) 
+short_condition = ta.crossunder(bbpct_pos, bbpct_thrsh) 
+
+
+if long_condition and inDateRange and barstate.isconfirmed
+    strategy.entry("Long", strategy.long)
+if short_condition and inDateRange and barstate.isconfirmed
+    strategy.entry("Short", strategy.short)
+
+plot(cobra.curve(disp_ind))
+cobra.cobraTable(type_table, pos_table) 
