@@ -3,13 +3,13 @@
 ![License](https://img.shields.io/badge/License-MIT-blue.svg)
 
 ## Technical Analysis
-Built and back-tested for BTC/USD in TradingView - Highest Sharpe ratio: 1.6. 
+Trend-following strategy built and backtested in TradingView.  
 The trend is determined by aggregating open-source trend-following indicators.  
-Spot positions are entered if the strategy signals long AND market valuation is supportive of positive price performance.
-If the strategy signals short, cash or stablecoins are held.
+Spot positions are entered if the strategy signals long AND market valuation is supportive of positive price performance.  
+If the strategy signals short, cash or stablecoins are held.  
 
 <p align="center">
-<img src="images/strategy1.png" alt="TradingView Strategy" width="400"/>
+<img src="images/strategy1.png" alt="TradingView Strategy" width="600"/>
 </p>
 
 ## Market Valuation
@@ -18,5 +18,5 @@ This system aggregates several key on-chain metrics and fundamental indicators t
 This aggregate score is mean-reverting and signals overbought and oversold conditions.
 
 <p align="center">
-<img src="images/on_chain1.png" alt="Market Valuation Score" width="400"/>
+<img src="images/on_chain1.png" alt="Market Valuation Score" width="600"/>
 </p>
